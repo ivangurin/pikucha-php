@@ -1,0 +1,16 @@
+Options -Indexes -MultiViews
+
+AddDefaultCharset utf-8
+php_flag magic_quotes_gpc off
+php_flag log_errors on
+php_value default_charset utf-8
+php_value date.timezone Europe/Moscow
+
+RewriteEngine On
+
+RewriteCond %{HTTP_HOST} ^www\.(.*)$
+RewriteRule ^(.*)$ http://%1/$1 [L,R]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [L]

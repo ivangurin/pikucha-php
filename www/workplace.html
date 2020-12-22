@@ -1,0 +1,2576 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="keywords"
+      content="хранилище изображений, хранилище фотографий, хранилище картинок, хостинг изображений, хостинг фотографий, хостинг картинок, пикуча"/>
+<meta name="description" content="Хранилище изображений"/>
+<meta name="yandex-verification" content="6c92776b7a4ca4fe"/>
+<title>Хранилище изображений</title>
+<link rel="stylesheet" href="css/styles.css"/>
+<link rel="shortcut icon" href="favicon.ico"/>
+<script src="http://yandex.st/jquery/1.10.1/jquery.js"></script>
+<script src="http://yandex.st/jquery/tmpl/1.0.0pre/jquery.tmpl.min.js"></script>
+<script src="http://yandex.st/json2/2011-10-19/json2.min.js"></script>
+<script src="http://vk.com/js/api/openapi.js"></script>
+<script src="js/cryptojs.md5.min.js"></script>
+<script src="js/purl.min.js"></script>
+<script src="pixlr/pixlr.js"></script>
+<script src="plupload/plupload.js"></script>
+<script>
+
+var vk_app_id = 3532196;
+var mode = null; // [list, thumbnails]
+var type = "single"; //[all, single, trash, album]
+var id = 0;
+var r_conf = {};
+var r_user = null;
+var t_images = {};
+var t_albums = {};
+var r_progress = {};
+var r_links = {};
+var r_rules = {};
+
+$(document).ready(function () {
+    init();
+});
+
+function init() {
+
+    $("#body_template").tmpl().prependTo("body");
+
+    get_data();
+
+    menu_init();
+    workplace_init();
+    user_entry_init();
+    user_registration_init();
+    user_change_init();
+    image_upload_init();
+    image_change_init();
+    album_create_init();
+    album_change_init();
+
+    r_progress = new cl_progress("window_progress");
+    r_links = new cl_links("window_links");
+    r_rules = new cl_rules("window_rules");
+
+    if (r_user == null)
+        image_upload_show();
+    else
+        workplace_show();
+
+    VK.init({apiId: vk_app_id});
+
+}
+
+function get_data() {
+
+    $.ajax({
+        async: false,
+        type: "GET",
+        url: "api?object=service&action=get_conf",
+        data: {
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data)
+                throw(i_data.text);
+
+            r_conf = i_data.conf;
+
+        },
+        error: function (XMLHttpRequest, textStatus, errorThrown) {
+            alert("Error on get conf: " + errorThrown);
+        }
+    });
+
+    $.ajax({
+        async: false,
+        type: "GET",
+        url: "api?object=user&action=get",
+        data: {
+            albums: true,
+            images: true,
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                return false;
+                alert(i_data.text);
+            }
+
+            if ("user" in i_data)
+                r_user = i_data.user;
+
+            if ("images" in i_data)
+                t_images = i_data.images;
+
+            if ("albums" in i_data)
+                t_albums = i_data.albums;
+
+        },
+        error: function (XMLHttpRequest, textStatus, errorThrown) {
+            alert("Error on get user data: " + errorThrown);
+        }
+    });
+
+}
+
+function workplace_show() {
+    mode = "list";
+    workplace_update();
+    $("#window_workplace").show();
+}
+
+function workplace_update() {
+    user_update();
+    navigation_update();
+    albums_update();
+    content_update();
+}
+
+function user_update() {
+    $("#menu #profile a").text(r_user.name);
+}
+
+function navigation_update() {
+
+    var lr_navi = {};
+    lr_navi.type = type;
+
+    $("#workplace_navigation").empty();
+    $("#navigation_template").tmpl(lr_navi).appendTo("#workplace_navigation");
+
+    $("#image_upload").click(function () {
+        uploader.splice(0, uploader.files.length);
+        image_upload_show();
+        uploader.refresh();
+        return false;
+    });
+
+    $("#show_all").click(function () {
+        type = "all";
+        id = "0";
+        workplace_update();
+        return false;
+    });
+
+    $("#show_single").click(function () {
+        type = "single";
+        id = "0";
+        workplace_update();
+        return false;
+    });
+
+    $("#show_trash").click(function () {
+        type = "trash";
+        id = "0";
+        workplace_update();
+        return false;
+    });
+
+}
+
+function albums_update() {
+
+    var lr_navi = {};
+    lr_navi.type = type;
+    lr_navi.id = id;
+
+    $("#workplace_albums").empty();
+    $("#albums_template").tmpl(lr_navi).appendTo("#workplace_albums");
+
+    $("#albums_toolbar #album_create").click(function () {
+        album_create_show();
+        return false;
+    });
+
+    var l_counter = 0;
+    for (var l_index in t_albums) {
+        if (t_albums.hasOwnProperty(l_index)) {
+            l_counter++;
+        }
+    }
+
+    if (l_counter == 0) {
+        $("#workplace_albums #items").hide();
+        $("#workplace_albums #items_none").show();
+        return false;
+    } else {
+        $("#workplace_albums #items_none").hide();
+        $("#workplace_albums #items").show();
+    }
+
+    $("#workplace_albums #items ul").empty();
+
+    var lt_albums = [];
+
+    for (var l_index in t_albums) {
+        if (t_albums.hasOwnProperty(l_index)) {
+            lt_albums[l_index] = t_albums[l_index];
+        }
+    }
+
+    $("#album_item_template").tmpl(lt_albums).appendTo("#workplace_albums #items ul");
+
+    $("#workplace_albums .album").click(function () {
+        type = "album";
+        id = $(this).parent().attr("id");
+        workplace_update();
+        return false;
+    });
+
+}
+
+function content_update() {
+
+    title_update();
+    toolbar_update();
+
+    $("#workplace_content").empty();
+
+    var lt_images = [];
+
+    for (var l_index in t_images) {
+
+        if (t_images.hasOwnProperty(l_index)) {
+
+            var lr_image = t_images[l_index];
+
+            switch (type) {
+                case "all":
+                    if (lr_image.deleted == "0") {
+                        lt_images[l_index] = lr_image;
+                    }
+                    break;
+                case "single":
+                    if (lr_image.album == "0" && lr_image.deleted == "0") {
+                        lt_images[l_index] = lr_image;
+                    }
+                    break;
+                case "trash":
+                    if (lr_image.deleted == "1") {
+                        lt_images[l_index] = lr_image;
+                    }
+                    break;
+                case "album":
+                    if (lr_image.album == id && lr_image.deleted == "0") {
+                        lt_images[l_index] = lr_image;
+                    }
+                    break;
+            }
+
+        }
+
+    }
+
+    if (mode == "list") {
+        $("#image_list_template").tmpl(lt_images).appendTo("#workplace_content");
+    } else {
+        $("#image_thumbnail_template").tmpl(lt_images).appendTo("#workplace_content");
+    }
+
+    $(".image_links").click(function () {
+        var l_id = $(this).parent().parent().attr("id");
+        var lt_images = [];
+        lt_images.push(t_images[l_id]);
+        r_links.show(lt_images);
+        return false;
+    });
+
+    $(".image_change").click(function () {
+        var l_id = $(this).parent().parent().attr("id");
+        var lt_images = [];
+        lt_images.push(l_id);
+        image_change_show(lt_images);
+        return false;
+    });
+
+    $(".image_edit").click(function () {
+        var l_id = $(this).parent().parent().attr("id");
+        image_edit(l_id);
+        return false;
+    });
+
+    $(".image_delete").click(function () {
+        var l_id = $(this).parent().parent().attr("id");
+        var lt_images = [];
+        lt_images.push(l_id);
+        image_delete(lt_images);
+        return false;
+    });
+
+    $(".image_restore").click(function () {
+        var l_id = $(this).parent().parent().attr("id");
+        var lt_images = [];
+        lt_images.push(l_id);
+        image_restore(lt_images);
+        return false;
+    });
+
+}
+
+function title_update() {
+
+    $("#workplace_title").empty();
+    $("#workplace_description").empty();
+
+    switch (type) {
+        case "all":
+            $("#workplace_title").text("Все");
+            break;
+        case "single":
+            $("#workplace_title").text("Без альбома");
+            break;
+        case "trash":
+            $("#workplace_title").text("Мусорка");
+            break;
+        case "album":
+
+            var lr_album = t_albums[id];
+
+            $("#album_title_template").tmpl(lr_album).appendTo("#workplace_title");
+
+            $("#workplace_description").text(lr_album.description);
+
+            $("#workplace_title #album_links").click(function () {
+                var lt_albums = [];
+                lt_albums.push(t_albums[id]);
+                r_links.show(lt_albums);
+                return false;
+            });
+
+            $("#workplace_title #album_change").click(function () {
+                album_change_show(id);
+                return false;
+            });
+
+            $("#workplace_title #album_delete").click(function () {
+                album_delete(id);
+                return false;
+            });
+
+            break;
+    }
+}
+
+function toolbar_update() {
+
+    $("#workplace_toolbar").empty();
+    $("#toolbar_template").tmpl("toolbar").appendTo("#workplace_toolbar");
+
+    $("#list").click(function () {
+        mode = "list";
+        content_update();
+        return false;
+    });
+
+    $("#thumbnails").click(function () {
+        mode = "thumbnails";
+        content_update();
+        return false;
+    });
+
+    $("#select_all").click(function () {
+        $("#image_mark:not(:checked)").prop("checked", true);
+        return false;
+    });
+
+    $("#select_none").click(function () {
+        $("#image_mark:checked").prop("checked", false);
+        return false;
+    });
+
+    $("#image_links").click(function () {
+
+        var lt_images = [];
+        $("#image_mark:checked").each(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            lt_images.push(t_images[l_id]);
+        });
+
+        if (lt_images.length > 0)
+            r_links.show(lt_images);
+        else
+            alert("Вы не указали изображения");
+
+        return false;
+    });
+
+
+    $("#image_change").click(function () {
+
+        lt_images = [];
+        $("#image_mark:checked").each(function () {
+            lt_images.push($(this).parent().parent().attr("id"));
+        });
+
+        if (lt_images.length > 0)
+            image_change_show(lt_images);
+        else
+            alert("Вы не указали изображения");
+
+        return false;
+    });
+
+    $("#image_delete").click(function () {
+
+        lt_images = [];
+        $("#image_mark:checked").each(function () {
+            lt_images.push($(this).parent().parent().attr("id"));
+        });
+
+        if (lt_images.length > 0)
+            image_delete(lt_images);
+        else
+            alert("Вы не указали изображения");
+
+        return false;
+
+    });
+
+    $("#image_restore").click(function () {
+
+        lt_images = [];
+        $("#image_mark:checked").each(function () {
+            lt_images.push($(this).parent().parent().attr("id"));
+        });
+
+        if (lt_images.length > 0)
+            image_restore(lt_images);
+        else
+            alert("Вы не указали изображения");
+
+        return false;
+
+    });
+
+    $("#trash_empty").click(function () {
+        empty_trash();
+        return false;
+    });
+
+}
+
+function menu_init() {
+
+    $("#menu").empty();
+    $("#menu_template").tmpl().appendTo("#menu");
+
+    $("#menu #rules").click(function () {
+        r_rules.show();
+        return false;
+    });
+
+    $("#menu #profile").click(function () {
+        user_change_show();
+        return false;
+    });
+
+    $("#menu #signin").click(function () {
+        $("#window_entry").show();
+        return false;
+    });
+
+    $("#menu #vk_signin").click(function () {
+        vk_signin();
+        return false;
+    });
+
+    $("#menu #exit").click(function () {
+        user_exit();
+        return false;
+    });
+
+    if (window.r_user == null) {
+        $("#menu #profile").hide();
+        $("#menu #exit").hide();
+        $("#menu #entry").show();
+    } else {
+        $("#menu #profile").show();
+        $("#menu #exit").show();
+        $("#menu #entry").hide();
+    }
+
+    $("#menu").show();
+
+}
+
+function workplace_init() {
+
+    $("#window_workplace").empty();
+    $("#window_workplace_template").tmpl().appendTo("#window_workplace");
+
+}
+
+function progress_init() {
+
+    $("#window_progress").empty();
+    $("#window_progress_template").tmpl().appendTo("#window_progress");
+
+}
+
+// Fake user create
+function user_create() {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=create",
+        data: {
+            name: "Друг"
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data)
+                throw(i_data.text);
+
+            set_token(i_data.token);
+
+        },
+        error: function (i_data, textStatus) {
+            throw("Error on create fake user");
+        }
+    });
+
+}
+
+function user_entry_init() {
+
+    $("#window_entry").empty();
+    $("#window_entry_template").tmpl().appendTo("#window_entry");
+
+    $("#window_entry #entry_entry").click(function () {
+        user_entry();
+        return false;
+    });
+
+    $("#window_entry #password").keypress(function (e) {
+        if (e.which == 13) {
+            user_entry();
+            return false;
+        }
+    });
+
+    $("#window_entry #entry_registration").click(function () {
+        $("#window_entry").hide();
+        $("#window_registration").show();
+        return false;
+    });
+
+    $("#window_entry #entry_remind").click(function () {
+        user_remind();
+        return false;
+    });
+
+    $("#window_entry #entry_cancel").click(function () {
+        $("#window_entry").hide();
+        return false;
+    });
+
+}
+
+function user_entry() {
+
+    var lr_regex = new RegExp("^[_\\.0-9a-z-]+@([0-9a-z][0-9a-z_-]+\\.)+[a-z]{2,4}$");
+
+    var l_email = $("#window_entry #email").val();
+    var l_password = $("#window_entry #password").val();
+
+    if (l_email.length == 0) {
+        alert("Укажите вашу почту");
+        return false;
+    }
+
+    if (lr_regex.test(l_email) == false) {
+        alert("Укажите правильную почту");
+        return false;
+    }
+
+    if (l_password.length == 0) {
+        alert("Укажите пароль");
+        return false;
+    } else {
+        l_password = CryptoJS.MD5(l_password);
+    }
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=signin",
+        data: {
+            email: l_email,
+            password: l_password.toString()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            set_token(i_data.token);
+
+            location.href = "/";
+
+        },
+        error: function (XMLHttpRequest, textStatus, errorThrown) {
+            alert("Error on user sign in: " + errorThrown);
+        }
+    });
+
+}
+
+function user_remind() {
+
+    var lr_regex = new RegExp("^[_\\.0-9a-z-]+@([0-9a-z][0-9a-z_-]+\\.)+[a-z]{2,4}$");
+    var l_email = $("#window_entry #email").val();
+
+    if (l_email.length == 0) {
+        alert("Что и свою почту забыли?");
+        return false;
+    }
+
+    if (lr_regex.test(l_email) == false) {
+        alert("Это не правильная почта");
+        return false;
+    }
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=remind",
+        data: {
+            email: l_email
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            alert("Ваши воспоминания ушли на вашу почту");
+
+            $("#window_entry").hide();
+
+        },
+        error: function (i_data, textStatus) {
+            alert("Error on remind");
+        }
+    });
+
+}
+
+function user_registration_init() {
+
+    $("#window_registration").empty();
+    $("#window_registration_template").tmpl().appendTo("#window_registration");
+
+    $("#window_registration #registration_registrate").click(function () {
+        user_registrate();
+        return false;
+    });
+
+    $("#window_registration #registration_cancel").click(function () {
+        $("#window_registration").hide();
+        return false;
+    });
+
+}
+
+function user_registrate() {
+
+    var l_name = $("#window_registration #name").val();
+    if (l_name.length == 0) {
+        alert("Укажите ваше имя");
+        return false;
+    }
+
+    var l_email = $("#window_registration #email").val();
+    if (l_email.length == 0) {
+        alert("Укажите вашу почту");
+        return false;
+    }
+
+    var lr_regex = new RegExp("^[_\\.0-9a-z-]+@([0-9a-z][0-9a-z_-]+\\.)+[a-z]{2,4}$");
+    if (lr_regex.test(l_email) == false) {
+        alert("Укажите правильную почту");
+        return false;
+    }
+
+    var l_password = $("#window_registration #password").val();
+    if (l_password.length == 0) {
+        alert("Укажите пароль");
+        return false;
+    }
+
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=registrate",
+        data: {
+            name: l_name,
+            email: l_email,
+            password: l_password
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            set_token(i_data.token);
+
+            location.href = "/";
+
+        },
+        error: function (i_data) {
+            alert("Error on user registaration");
+        }
+    });
+
+}
+
+function user_change_init() {
+
+    $("#window_profile").empty();
+    $("#window_profile_template").tmpl().appendTo("#window_profile");
+
+    $("#window_profile #vk_link").click(function () {
+        vk_link();
+        return false;
+    });
+
+    $("#window_profile #profile_save").click(function () {
+        user_change_save();
+        return false;
+    });
+
+    $("#window_profile #profile_cancel").click(function () {
+        $("#window_profile").hide();
+        return false;
+    });
+
+}
+
+function user_change_show() {
+
+    var l_top = $("body").scrollTop();
+    $("#window_profile").css("margin-top", l_top - 200 + "px");
+
+    $("#window_profile #id").text(r_user.id);
+
+    $("#window_profile #name").val(r_user.name);
+
+    $("#window_profile #email").val(r_user.email);
+
+    $("#window_profile #password").val("");
+
+    $("#window_profile #thumbnail_dimension").val(r_user.thumbnail_dimension);
+
+    if (r_user.thumbnail_size == "1")
+        $("#window_profile #thumbnail_size").prop("checked", true);
+
+    if (r_user.convert == "1")
+        $("#window_profile #convert").prop("checked", true);
+
+    $("#window_profile").show();
+}
+
+function user_change_save() {
+
+    var l_name = $("#window_profile #name").val();
+    var l_email = $("#window_profile #email").val();
+    var l_password = $("#window_profile #password").val();
+    var l_thumbnail_dimension = $("#window_profile #thumbnail_dimension").val();
+    var l_thumbnail_dimension_min = $("#window_profile #thumbnail_dimension").attr("min");
+    var l_thumbnail_dimension_max = $("#window_profile #thumbnail_dimension").attr("max");
+
+    var l_thumbnail_size = "0";
+    if ($("#window_profile #thumbnail_size").prop("checked") == true)
+        l_thumbnail_size = "1";
+
+    var l_convert = "0";
+    if ($("#window_profile #convert").prop("checked") == true)
+        l_convert = "1";
+
+    var lr_regex = new RegExp("^[_\\.0-9a-z-]+@([0-9a-z][0-9a-z_-]+\\.)+[a-z]{2,4}$");
+
+    if (l_name.length == 0) {
+        alert("Укажите свое имя");
+        return false;
+    }
+
+    if (l_email.length == 0) {
+        alert("Укажите свою почту");
+        return false;
+    }
+
+    if (lr_regex.test(l_email) == false) {
+        alert("Укажите правильную почту");
+        return false;
+    }
+
+    if (l_thumbnail_dimension.length == 0) {
+        alert("Укажите размер превью");
+        return false;
+    }
+
+    if (parseFloat(l_thumbnail_dimension) < parseFloat(l_thumbnail_dimension_min)) {
+        alert("Размер превью не можеть быть меньше " + l_thumbnail_dimension_min + " пикселей");
+        return false;
+    }
+
+    if (parseFloat(l_thumbnail_dimension) > parseFloat(l_thumbnail_dimension_max)) {
+        alert("Размер превью не можеть быть больше " + l_thumbnail_dimension_max + " пикселей");
+        return false;
+    }
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=change",
+        data: {
+            name: l_name,
+            email: l_email,
+            password: l_password,
+            thumbnail_dimension: l_thumbnail_dimension,
+            thumbnail_size: l_thumbnail_size,
+            convert: l_convert,
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            r_user = i_data;
+
+            user_update();
+
+            $("#window_profile").hide();
+
+            return false;
+
+        },
+        error: function (i_data, textStatus) {
+            alert("Error on change user");
+            return false;
+        }
+    });
+
+    return false;
+
+}
+
+function user_exit() {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=user&action=signout",
+        data: {
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            remove_token();
+
+            location.href = "/";
+
+        },
+        error: function (i_data) {
+            alert("Error on exit user");
+        }
+    });
+
+}
+
+function vk_signin() {
+
+    VK.Auth.login(function (response) {
+
+        try {
+
+            if (response.session) {
+
+
+                $.ajax({
+                    async: false,
+                    type: "POST",
+                    url: "api?object=user&action=vk_signin",
+                    data: {
+                        expire: response.session.expire,
+                        mid: response.session.mid,
+                        secret: response.session.secret,
+                        sid: response.session.sid,
+                        sig: response.session.sig,
+                        nickname: response.session.user.nickname,
+                        first_name: response.session.user.first_name,
+                        last_name: response.session.user.last_name
+                    },
+                    dataType: "json",
+                    success: function (i_data) {
+
+                        if ("error" in i_data)
+                            throw(i_data.text);
+
+                        set_token(i_data.token);
+
+                        location.href = "/";
+
+                    },
+                    error: function (XMLHttpRequest, textStatus, errorThrown) {
+                        throw("Error on VK signin: " + errorThrown + "(" + textStatus + ")");
+                    }
+                });
+
+            } else {
+                //alert('not auth');
+            }
+
+        } catch (e) {
+            alert(e);
+        }
+
+    });
+
+}
+
+function vk_link() {
+
+    VK.Auth.login(function (response) {
+
+        try {
+
+            if (response.session) {
+
+                $.ajax({
+                    async: false,
+                    type: "POST",
+                    url: "api?object=user&action=vk_link",
+                    data: {
+                        expire: response.session.expire,
+                        mid: response.session.mid,
+                        secret: response.session.secret,
+                        sid: response.session.sid,
+                        sig: response.session.sig,
+                        nickname: response.session.user.nickname,
+                        first_name: response.session.user.first_name,
+                        last_name: response.session.user.last_name,
+                        token: get_token()
+                    },
+                    dataType: "json",
+                    success: function (i_data) {
+
+                        if ("error" in i_data)
+                            throw(i_data.text);
+
+                        location.href = "/";
+
+                    },
+                    error: function (XMLHttpRequest, textStatus, errorThrown) {
+                        throw("Error on VK link: " + textStatus);
+                    }
+                });
+
+            } else {
+                //alert('not auth');
+            }
+
+        } catch (e) {
+            alert(e);
+        }
+
+    });
+
+}
+
+function image_upload_init() {
+
+    $("#window_image_upload").empty();
+    $("#window_image_upload_template").tmpl().appendTo("#window_image_upload");
+
+    uploader = new plupload.Uploader({
+        runtimes: "flash, html5, silverlight",
+        browse_button: "image_upload_browse",
+        max_file_size: "10mb",
+        url: "http://" + r_conf.host_upload + "/api?object=image&action=upload",
+        flash_swf_url: "/plupload/plupload.flash.swf",
+        silverlight_xap_url: "/plupload/plupload.silverlight.xap",
+        filters: [
+            {title: "All images", extensions: "jpg, JPG, jpeg, JPEG, gif, GIF, png, PNG, bmp, BMP, tif, TIF, tiff, TIFF"},
+            {title: "JPEG", extensions: "jpg, JPG, jpeg, JPEG"},
+            {title: "PNG", extensions: "png, PNG"},
+            {title: "GIF", extensions: "gif, GIF"},
+            {title: "BMP", extensions: "bmp, BMP"},
+            {title: "TIFF", extensions: "tif, TIF, tiff, TIFF"}
+        ],
+        multipart: true,
+        multipart_params: {
+            token: get_token()
+        }
+    });
+
+    uploader.bind("Init", function (up) {
+        //$("#image_upload_files").val("Current runtime: " + up.runtime);
+    });
+
+    uploader.bind('FilesAdded', function (up, files) {
+        up.splice(0, up.files.length);
+        $("#image_upload_files").val("");
+        if (files.length == 1)
+            $("#image_upload_files").val(files[0].name);
+        else if (files.length > 1)
+            $("#image_upload_files").val("Выбрано " + files.length + " изображений");
+    });
+
+    uploader.bind("StateChanged", function (up) {
+        if (up.state == 1) {
+            r_progress.hide();
+            //image_upload_show();
+        } else {
+            image_upload_hide();
+            r_progress.show();
+        }
+    });
+
+    uploader.bind('BeforeUpload', function (up, file) {
+
+    });
+
+    uploader.bind('UploadProgress', function (up, file) {
+        r_progress.set(up.total.percent);
+    });
+
+    uploader.bind('FileUploaded', function (up, file, data) {
+
+        var lr_data = $.parseJSON(data.response);
+
+        if ("error" in lr_data) {
+            alert(lr_data.text);
+            return false;
+        }
+
+        for (var l_index in lr_data) {
+
+            if (lr_data.hasOwnProperty(l_index)) {
+
+                var lr_image = lr_data[l_index];
+                response.push(lr_image);
+
+            }
+
+        }
+
+    });
+
+    uploader.bind("UploadComplete", function (up, files) {
+        up.splice(0, up.files.length);
+        $("#image_upload_files").val("");
+        image_upload_finish(response);
+    });
+
+    uploader.bind('Error', function (up, error) {
+        switch (error.code) {
+            case -600:
+                alert("Превышен размер файла " + error.file.nam);
+                break;
+            case -601:
+                alert("Файл " + error.file.name + " не является изображением");
+                break;
+            default:
+                alert(error.message);
+                break;
+        }
+    });
+
+    uploader.init();
+
+    $("#window_image_upload #image_upload_start").click(function () {
+        try {
+            image_upload_start();
+        } catch (e) {
+            alert(e);
+        }
+        return false;
+    });
+
+    $("#window_image_upload #image_upload_cancel").click(function () {
+        image_upload_hide()
+        return false;
+    });
+
+    $("#window_image_upload #image_upload_add").click(function () {
+        $("#window_image_upload").css("margin-top", "-200px");
+        $("#window_image_upload #image_upload_add_off").hide();
+        $("#window_image_upload #image_upload_add_on").show();
+        uploader.refresh();
+        return false;
+    });
+
+}
+
+function image_upload_show() {
+
+    $("#window_image_upload").css("margin-top", "-100px");
+
+    $("#image_upload_files").val("");
+
+    $("#window_image_upload #album").parent().hide();
+    $("#window_image_upload #name").parent().hide();
+    $("#window_image_upload #album option").remove();
+
+    if (r_user != null && t_albums != null) {
+
+        $.template("album", "<option value='${id}'>${name}</option>)");
+
+        $("#window_image_upload #album").append("<option value=''></option>)")
+
+        for (var l_index in t_albums) {
+            if (t_albums.hasOwnProperty(l_index)) {
+                $.tmpl("album", t_albums[l_index]).appendTo("#window_image_upload #album");
+            }
+        }
+
+        $("#window_image_upload #album").append("<option value='new'>[Хочу в новый альбом]</option>)")
+        $("#window_image_upload #album").parent().show();
+
+        if (id != 0)
+            $("#window_image_upload #album option[value='" + id + "']").prop("selected", true);
+
+        $("#window_image_upload #album").change(function () {
+            if ($("#window_image_upload #album").val() == "new")
+                $("#window_image_upload #name").parent().show();
+            else
+                $("#window_image_upload #name").parent().hide();
+        });
+
+    } else {
+
+        $("#window_image_upload #name").parent().show();
+
+    }
+
+    $("#window_image_upload #thumbnail_dimension").val(r_conf.thumbnail_dimension);
+
+    $("#window_image_upload #thumbnail_size").prop("checked", false);
+
+    if (r_user != null) {
+
+        $("#window_image_upload #thumbnail_dimension").val(r_user.thumbnail_dimension);
+
+        if (r_user.thumbnail_size == "1")
+            $("#window_image_upload #thumbnail_size").prop("checked", true);
+
+    }
+
+    if (r_user == null) {
+        $("#window_image_upload #image_upload_toolbar_big").hide();
+        $("#window_image_upload #image_upload_toolbar_small").show();
+
+    } else {
+        $("#window_image_upload #image_upload_toolbar_big").show();
+        $("#window_image_upload #image_upload_toolbar_small").hide();
+    }
+
+    $("#window_image_upload #image_upload_add_on").hide();
+    $("#window_image_upload #image_upload_add_off").show();
+
+    $("#window_image_upload").show();
+
+}
+
+function image_upload_hide() {
+
+    $("#window_image_upload").hide();
+
+    uploader.refresh();
+
+}
+
+function image_upload_start() {
+
+    if (uploader.files.length == 0)
+        throw("Укажите изображения для загрузки");
+
+    var lr_data = {};
+
+    var l_album = $("#window_image_upload #album").val();
+    if (l_album != null && l_album != "" && l_album != "new")
+        lr_data.album = l_album;
+
+    var l_name = $("#window_image_upload #name").val();
+    if (l_name != null && l_name != "")
+        lr_data.name = l_name;
+
+    var l_description = $("#window_image_upload #description").val();
+    if (l_description != null && l_description != "")
+        lr_data.description = l_description;
+
+    var l_thumbnail_dimension = $("#window_image_upload #thumbnail_dimension").val();
+    if (l_thumbnail_dimension == "")
+        l_thumbnail_dimension = 0;
+
+    var l_thumbnail_dimension_min = $("#window_image_upload #thumbnail_dimension").attr("min");
+    var l_thumbnail_dimension_max = $("#window_image_upload #thumbnail_dimension").attr("max");
+
+    if (parseFloat(l_thumbnail_dimension) < parseFloat(l_thumbnail_dimension_min))
+        throw("Размер превью не можеть быть меньше " + l_thumbnail_dimension_min + " пикселей");
+
+    if (parseFloat(l_thumbnail_dimension) > parseFloat(l_thumbnail_dimension_max))
+        throw("Размер превью не можеть быть больше " + l_thumbnail_dimension_max + " пикселей");
+
+    if (l_thumbnail_dimension != null && l_thumbnail_dimension != "")
+        lr_data.thumbnail_dimension = l_thumbnail_dimension;
+
+    var l_thumbnail_size = "0";
+    if ($("#window_image_upload #thumbnail_size").prop("checked") == true)
+        var l_thumbnail_size = "1";
+    lr_data.thumbnail_size = l_thumbnail_size;
+
+    var l_thumbnail_text = $("#window_image_upload #thumbnail_text").val();
+    if (l_thumbnail_text != null && l_thumbnail_text != "")
+        lr_data.thumbnail_text = l_thumbnail_text;
+
+    var l_rotate = $("#window_image_upload #rotate").val();
+    if (l_rotate != null && l_rotate != "")
+        lr_data.rotate = l_rotate;
+
+    var l_resize = $("#window_image_upload #resize").val();
+    if (l_resize != null && l_resize != "")
+        lr_data.resize = l_resize;
+
+    if (!r_user)
+        user_create();
+
+    if ("name" in lr_data)
+        lr_data.album = album_create({"name": lr_data.name});
+
+    if ("album" in lr_data) {
+        type = "album";
+        id = lr_data.album;
+    }
+
+    lr_data.token = get_token();
+
+    response = [];
+
+    uploader.settings.multipart_params = lr_data;
+    uploader.start();
+
+}
+
+function image_upload_finish(ir_data) {
+
+    if ("error" in ir_data) {
+        alert(ir_data.text);
+        return false;
+    }
+
+    var l_error;
+    var l_errors;
+    var l_error_counter = 0;
+    var lt_images = [];
+
+    for (var l_index in ir_data) {
+
+        if (ir_data.hasOwnProperty(l_index)) {
+
+            var lr_image = ir_data[l_index];
+
+            if ("error" in lr_image) {
+                l_error_counter++;
+                l_error = l_error_counter + ". " + lr_image.error;
+                if (l_errors == null)
+                    l_errors = l_error;
+                else
+                    l_errors = l_errors + "\r\n\r\n" + l_error;
+            } else {
+                t_images[lr_image.id] = lr_image;
+                lt_images.push(lr_image);
+            }
+
+        }
+
+    }
+
+    if (l_errors != null)
+        alert(l_errors);
+
+    if (lt_images.length != 0) {
+
+        r_links.on_close = function () {
+
+            if (mode == null)
+                location.href = "/";
+            else
+                content_update();
+
+        }
+
+        image_upload_hide();
+
+        r_links.show(lt_images);
+
+    }
+
+}
+
+function image_change_init() {
+
+    $("#window_image_change").empty();
+    $("#window_image_change_template").tmpl().appendTo("#window_image_change");
+
+    $("#window_image_change #image_change_save").click(function () {
+        image_change_save();
+        return false;
+    });
+
+    $("#window_image_change #image_change_cancel").click(function () {
+        $("#window_image_change").hide();
+        return false;
+    });
+
+}
+
+function image_change_show(it_images) {
+
+    var l_top = $("body").scrollTop();
+    $("#window_image_change").css("margin-top", l_top - 200 + "px");
+
+    $("#window_image_change #album").parent().hide();
+    $("#window_image_change #album option").remove();
+
+    if (t_albums != null) {
+
+        $.template("album", "<option value='${id}'>${name}</option>)");
+
+        $("#window_image_change #album").append("<option value=''></option>)")
+
+        for (var l_index in t_albums) {
+            if (t_albums.hasOwnProperty(l_index)) {
+                $.tmpl("album", t_albums[l_index]).appendTo("#window_image_change #album");
+            }
+        }
+
+        $("#window_image_change #album").parent().show();
+
+    }
+
+    $("#window_image_change #album").val("");
+    $("#window_image_change #thumbnail_dimension").val("");
+    $("#window_image_change #thumbnail_text").val("");
+    $("#window_image_change #thumbnail_size").prop("checked", false);
+    $("#window_image_change #description").val("");
+    $("#window_image_change #rotate").val("");
+    $("#window_image_change #rotate").parent().hide();
+    $("#window_image_change #resize").val("");
+    $("#window_image_change #resize").parent().hide();
+
+    if (it_images.length == 1) {
+
+        var lr_image = t_images[it_images[0]];
+
+        $("#window_image_change #album option[value='" + lr_image.album + "']").prop("selected", true);
+        $("#window_image_change #thumbnail_dimension").val(lr_image.thumbnail_dimension);
+        $("#window_image_change #thumbnail_text").val(lr_image.thumbnail_text);
+        if (lr_image.thumbnail_size == "1")
+            $("#window_image_change #thumbnail_size").prop("checked", true);
+        $("#window_image_change #description").val(lr_image.description);
+
+        $("#window_image_change #rotate").parent().show();
+        $("#window_image_change #resize").parent().show();
+
+    } else if (it_images.length > 1) {
+
+    } else {
+        return false;
+    }
+
+    lt_images = it_images;
+
+    $("#window_image_change").show();
+
+}
+
+function image_change_save() {
+
+    var l_album = $("#window_image_change #album").val();
+    var l_description = $("#window_image_change #description").val();
+    var l_thumbnail_dimension = $("#window_image_change #thumbnail_dimension").val();
+    var l_thumbnail_dimension_min = $("#window_image_change #thumbnail_dimension").attr("min");
+    var l_thumbnail_dimension_max = $("#window_image_change #thumbnail_dimension").attr("max");
+    var l_thumbnail_size = "0";
+    if ($("#window_image_change #thumbnail_size").prop("checked") == true)
+        var l_thumbnail_size = "1";
+    var l_thumbnail_text = $("#window_image_change #thumbnail_text").val();
+    var l_rotate = $("#window_image_change #rotate").val();
+    var l_resize = $("#window_image_change #resize").val();
+
+    if (l_thumbnail_dimension.length != 0) {
+
+        if (parseFloat(l_thumbnail_dimension) < parseFloat(l_thumbnail_dimension_min)) {
+            alert("Размер превью не можеть быть меньше " + l_thumbnail_dimension_min + " пикселей");
+            return false;
+        }
+
+        if (parseFloat(l_thumbnail_dimension) > parseFloat(l_thumbnail_dimension_max)) {
+            alert("Размер превью не можеть быть больше " + l_thumbnail_dimension_max + " пикселей");
+            return false;
+        }
+
+    }
+
+    var lr_data = {};
+    lr_data.images = JSON.stringify(lt_images);
+    lr_data.token = get_token();
+
+    if (lt_images.length == 1) {
+
+        if (l_thumbnail_dimension.length == 0) {
+            alert("Укажите размер превью");
+            return false;
+        }
+
+        lr_data.album = l_album;
+        lr_data.description = l_description;
+        lr_data.thumbnail_dimension = l_thumbnail_dimension;
+        lr_data.thumbnail_size = l_thumbnail_size;
+        lr_data.thumbnail_text = l_thumbnail_text;
+        lr_data.rotate = l_rotate;
+        lr_data.resize = l_resize;
+
+    } else {
+
+        if (l_album.length != 0)
+            lr_data.album = l_album;
+
+        if (l_description.length != 0)
+            lr_data.description = l_description;
+
+        if (l_thumbnail_dimension.length != 0)
+            lr_data.thumbnail_dimension = l_thumbnail_dimension;
+
+        if (l_thumbnail_size == "1")
+            lr_data.thumbnail_size = l_thumbnail_size;
+
+        if (l_thumbnail_text.length != 0)
+            lr_data.thumbnail_text = l_thumbnail_text;
+
+    }
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=image&action=change",
+        data: lr_data,
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            for (var l_index in i_data) {
+
+                if (i_data.hasOwnProperty(l_index)) {
+
+                    var lr_image = i_data[l_index];
+
+                    if ("error" in lr_image) {
+                        alert(lr_image.text);
+                    } else {
+                        t_images[lr_image.id] = lr_image;
+                    }
+
+                }
+
+            }
+
+            content_update();
+
+            $("#window_image_change").hide();
+
+        },
+        error: function (i_data) {
+            alert("Error on change image");
+            return false;
+        }
+    });
+
+}
+
+function image_edit(i_image) {
+
+    var lr_image = t_images[i_image];
+
+    pixlr.settings.title = lr_image.name;
+    pixlr.settings.image = lr_image.url_direct;
+    pixlr.settings.referrer = document.location;
+    pixlr.settings.exit = "http://" + r_conf.host + "/pixlr/exit.html";
+    pixlr.settings.target = "http://" + lr_image.host + "/api?object=image&action=save&image=" + lr_image.id + "&token=" + token;
+    pixlr.settings.method = "POST";
+    pixlr.settings.locktarget = true;
+    pixlr.settings.locktype = true;
+
+    pixlr.overlay.show(pixlr.settings);
+
+}
+
+function image_update(i_image) {
+
+    var lr_image = $.parseJSON(i_image);
+
+    t_images[lr_image.id] = lr_image;
+
+    content_update();
+
+}
+
+function image_delete(it_images) {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=image&action=delete",
+        data: {
+            images: JSON.stringify(it_images),
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                $("#window_image_change").hide();
+                return false;
+            }
+
+            for (var l_index in i_data) {
+
+                if (i_data.hasOwnProperty(l_index)) {
+
+                    var lr_image = i_data[l_index];
+
+                    if ("error" in lr_image) {
+                        alert(lr_image.text);
+                    } else {
+                        t_images[lr_image.id] = lr_image;
+                    }
+
+                }
+
+            }
+
+            content_update();
+
+        },
+        error: function (i_data) {
+            alert("Error on delete image");
+        }
+    });
+
+}
+
+function image_restore(it_images) {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=image&action=restore",
+        data: {
+            images: JSON.stringify(it_images),
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                $("#window_image_change").hide();
+                return false;
+            }
+
+            for (var l_index in i_data) {
+
+                if (i_data.hasOwnProperty(l_index)) {
+
+                    var lr_image = i_data[l_index];
+
+                    if ("error" in lr_image) {
+                        alert(lr_image.text);
+                    } else {
+                        t_images[lr_image.id] = lr_image;
+                    }
+
+                }
+
+            }
+
+            content_update();
+
+        },
+        error: function (i_data) {
+            alert("Error on restore image");
+        }
+    });
+
+}
+
+function empty_trash() {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=image&action=empty",
+        data: {
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            for (var l_index in t_images) {
+
+                if (t_images.hasOwnProperty(l_index)) {
+
+                    var lr_image = t_images[l_index];
+
+                    if (lr_image.deleted == 1) {
+                        delete t_images[lr_image.id];
+                    }
+
+                }
+
+            }
+
+            content_update();
+
+        },
+        error: function (i_data, textStatus) {
+            alert("Error on empty trash");
+        }
+    });
+
+}
+
+function album_create_init() {
+
+    $("#window_album_create").empty();
+    $("#window_album_create_template").tmpl().appendTo("#window_album_create");
+
+    $("#window_album_create #album_create_save").click(function () {
+
+        try {
+            album_create_save();
+        } catch (e) {
+            alert(e);
+        }
+
+        return false;
+
+    });
+
+    $("#window_album_create #album_create_cancel").click(function () {
+        $("#window_album_create").hide();
+        return false;
+    });
+
+}
+
+function album_create_show() {
+
+    $("#window_album_create #album_create_name").val("");
+    $("#window_album_create #album_create_description").val("");
+
+    $("#window_album_create").show();
+
+}
+
+function album_create_save() {
+
+    var l_name = $("#window_album_create #album_create_name").val();
+    var l_description = $("#window_album_create #album_create_description").val();
+
+    if (l_name.length == 0)
+        throw("Укажите имя альбома");
+
+    album_create({"name": l_name, "description": l_description});
+
+    $("#window_album_create").hide();
+
+}
+
+function album_create(ir_data) {
+
+
+    var lr_data = ir_data;
+
+    lr_data.token = get_token();
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=album&action=create",
+        data: lr_data,
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data)
+                throw(i_data.text);
+
+            var lr_album = i_data;
+
+            t_albums[lr_album.id] = lr_album;
+
+            type = "album";
+            id = lr_album.id;
+
+            workplace_update();
+
+        },
+        error: function (i_data) {
+            throw("Error on album create");
+        }
+    });
+
+    return id;
+
+}
+
+function album_change_init() {
+
+    $("#window_album_change").empty();
+    $("#window_album_change_template").tmpl().appendTo("#window_album_change");
+
+    $("#window_album_change #album_change_save").click(function () {
+        album_change_save(album_id);
+        return false;
+    });
+
+    $("#window_album_change #album_change_cancel").click(function () {
+        $("#window_album_change").hide();
+        return false;
+    });
+
+}
+
+function album_change_show(i_id) {
+
+    album_id = i_id;
+
+    var lr_album = t_albums[i_id];
+
+    $("#window_album_change #name").val(lr_album.name);
+    $("#window_album_change #description").val(lr_album.description);
+
+    $("#window_album_change").show();
+
+}
+
+function album_change_save(i_id) {
+
+    var l_name = $("#window_album_change #name").val();
+    var l_description = $("#window_album_change #description").val();
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=album&action=change",
+        data: {
+            album: i_id,
+            name: l_name,
+            description: l_description,
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            var lr_album = i_data;
+            t_albums[lr_album.id] = lr_album;
+
+            content_update();
+
+            $("#window_album_change").hide();
+
+        },
+        error: function (i_data) {
+            alert("Error on album change");
+        }
+    });
+
+}
+
+function album_delete(i_id) {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "api?object=album&action=delete",
+        data: {
+            album: i_id,
+            token: get_token()
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                return false;
+            }
+
+            delete t_albums[i_id];
+
+            for (var l_index in t_images) {
+
+                if (t_images.hasOwnProperty(l_index)) {
+
+                    var lr_image = t_images[l_index];
+
+                    if (lr_image.album == i_id)
+                        lr_image.album = 0;
+
+                }
+
+            }
+
+            type = "single";
+            id = 0;
+
+            $("#window_album_change").hide();
+
+            workplace_update();
+
+        },
+        error: function (i_data) {
+            alert("Error on album delete");
+        }
+    });
+
+}
+
+function get_token() {
+    return localStorage.token;
+}
+
+function set_token(i_token) {
+    localStorage.token = i_token;
+}
+
+function remove_token() {
+    delete localStorage.token;
+}
+;
+
+cl_progress = function (i_window) {
+
+    this.r_window = $("#" + i_window);
+    this.r_progress = $("#" + i_window + " progress");
+
+    this.r_window.html("<progress max='100'></progress>");
+
+    this.show = function () {
+        this.reset();
+        this.r_window.show();
+    }
+
+    this.hide = function () {
+        this.r_window.hide();
+    }
+
+    this.set = function (i_percent) {
+
+        this.r_progress.val(i_percent);
+
+        var l_cells = 42;
+        var l_progress = "";
+        var l_left = "";
+        var l_right = "";
+
+        for (var i = 1; i < l_cells; i++) {
+            if (i < i_percent / 100 * l_cells)
+                l_progress = l_progress + "+";
+            else
+                l_progress = l_progress + "-";
+        }
+
+        l_left = l_progress.substring(0, (l_cells + 2) / 2 - 3);
+        l_right = l_progress.substring(l_cells / 2 + 3, l_cells + 1);
+        l_progress = "<code>[" + l_left + "&nbsp;" + i_percent + "%&nbsp;" + l_right + "]</code>";
+
+        this.r_progress.html(l_progress);
+
+    }
+
+    this.reset = function () {
+        this.set(0);
+    }
+
+}
+
+cl_links = function (i_window) {
+
+    this.r_body = $("body");
+    this.r_window = $("#" + i_window);
+
+    $("#window_links_template").tmpl().appendTo(this.r_window);
+
+    this.r_fields = $("#" + i_window + " .field");
+    this.r_texts = $("#" + i_window + " .textarea");
+    this.r_url = $("#" + i_window + " #links_url");
+    this.r_bbcode = $("#" + i_window + " #links_bbcode");
+    this.r_html = $("#" + i_window + " #links_html");
+    this.r_close = $("#" + i_window + " #links_close");
+    this.offset = 150;
+
+    this.r_url.click(function () {
+        this.select();
+    });
+
+    this.r_bbcode.click(function () {
+        this.select();
+    });
+
+    this.r_html.click(function () {
+        this.select();
+    });
+
+    this.r_close.click({"r_links": this}, function (ir_event) {
+        ir_event.data.r_links.hide();
+        return false;
+    });
+
+    this.show = function (it_objects) {
+
+        var l_top = this.r_body.scrollTop();
+        this.r_window.css("margin-top", l_top - this.offset + "px");
+
+        this.reset();
+
+        if (it_objects.length == 1) {
+
+            var lr_object = it_objects[0];
+
+            this.r_url.val(lr_object.url);
+            this.r_bbcode.val(lr_object.bbcode);
+            this.r_html.val(lr_object.html);
+
+            this.r_fields.show();
+
+        } else {
+
+            this.r_url.text("");
+            this.r_bbcode.text("");
+            this.r_html.text("");
+
+            for (var l_index in it_objects) {
+
+                if (it_objects.hasOwnProperty(l_index)) {
+
+                    var lr_object = it_objects[l_index];
+
+                    var html = lr_object.html;
+                    html = html.replace(/</g, "&lt;");
+                    html = html.replace(/>/g, "&gt;");
+
+                    this.r_url.append(lr_object.url + "\r\n");
+                    this.r_bbcode.append(lr_object.bbcode + "\r\n");
+                    this.r_html.append(html + "\r\n");
+
+                }
+
+            }
+
+            this.r_texts.show();
+        }
+
+        this.r_window.show();
+
+    }
+
+    this.on_close = function () {
+
+    }
+
+    this.hide = function () {
+        this.on_close();
+        this.r_window.hide();
+    }
+
+    this.reset = function () {
+        this.r_fields.hide();
+        this.r_texts.hide();
+    }
+
+}
+
+cl_rules = function (i_window) {
+
+    this.r_window = $("#" + i_window);
+
+    this.r_window.empty();
+    $("#window_rules_template").tmpl().appendTo(this.r_window);
+
+    this.close = $("#" + i_window + " #rules_close");
+
+    this.close.click({"r_rules": this}, function (ir_event) {
+        ir_event.data.r_rules.hide();
+        return false;
+    });
+
+    this.show = function () {
+        this.r_window.show();
+    }
+
+    this.hide = function () {
+        this.r_window.hide();
+    }
+
+}
+
+</script>
+
+<!--Body template-->
+<script type="text/template" id="body_template">
+    <div id="menu"></div>
+    <div id="window_workplace"></div>
+    <div id="window_album_create"></div>
+    <div id="window_image_upload"></div>
+    <div id="window_image_change"></div>
+    <div id="window_album_change"></div>
+    <div id="window_entry"></div>
+    <div id="window_registration"></div>
+    <div id="window_profile"></div>
+    <div id="window_progress"></div>
+    <div id="window_links"></div>
+    <div id="window_rules"></div>
+</script>
+
+<!--Menu template-->
+<script type="text/template" id="menu_template">
+    <div class="menu_item_left" id="profile">
+        Привет, <a href="profile"></a>!
+    </div>
+    <div class="menu_item_right" id="exit">
+        <a href="exit">Выход</a>
+    </div>
+    <div class="menu_item_right" id="entry">
+        [ <a id="signin" href="signin">Вход</a>
+        | <a id="vk_signin" href="vk_signin"><img id="vk_logo" src="img/vk.gif" alt="VK"/></a> ]
+    </div>
+    <div class="menu_item_right" id="rules">
+        <a href="rules">Правила</a>
+    </div>
+</script>
+
+<!--Workplace template-->
+<script type="text/template" id="window_workplace_template">
+    <div id="workplace_left">
+        <div id="workplace_navigation"></div>
+        <div id="workplace_albums"></div>
+    </div>
+    <div id="workplace_right"></div>
+    <div id="workplace_center">
+        <div id="workplace_title"></div>
+        <div id="workplace_description"></div>
+        <div id="workplace_toolbar"></div>
+        <div id="workplace_content"></div>
+    </div>
+</script>
+
+<!--Navigation template-->
+<script type="text/template" id="navigation_template">
+    <ul>
+        <li><b><a id='image_upload' href='/upload'>Закачать</a></b></li>
+        <li>{{if type == 'all'}}Все{{else}}<a id='show_all' href='/all'>Все</a>{{/if}}</li>
+        <li>{{if type == 'single'}}Без альбома{{else}}<a id='show_single' href='/single'>Без альбома</a>{{/if}}</li>
+        <li>{{if type == 'trash'}}Мусорка{{else}}<a id='show_trash' href='/trash'>Мусорка</a>{{/if}}</li>
+    </ul>
+</script>
+
+<!--Albums template-->
+<script type="text/template" id="albums_template">
+    <div id='albums_title'>Альбомы:</div>
+    <div id='items'>
+        <ul></ul>
+    </div>
+    <div id='items_none'>Нет</div>
+    <div id='albums_toolbar'><a id='album_create' href='/create'>Создать</a></div>
+</script>
+
+<!--Album title template-->
+<script type="text/template" id="album_title_template">
+    ${name}
+    <nobr>
+        [ <a id='album_display' href='${url}' title='Просмотреть' target='_blank'>Просмотреть</a>
+        | <a id='album_links' href='/links' title='Ссылки'>Ссылки</a>
+        | <a id='album_change' href='/change' title='Изменить'>Изменить</a>
+        | <a id='album_delete' href='/delete' title='Удалить'>Удалить</a> ]
+    </nobr>
+</script>
+
+<!--Album item template-->
+<script type="text/template" id="album_item_template">
+    <li id=${id}>
+        {{if id == window.id}}
+        ${name}
+        {{else}}
+        <a class='album' href='/album' title='${description}\r\nПросмотрен ${counter} раз'>${name}</a>
+        {{/if}}
+    </li>
+</script>
+
+<!--Toolbar template-->
+<script type="text/template" id="toolbar_template">
+    Показать: [
+    {{if mode == 'list'}}
+    Списком{{else}}
+    <a id='list' href='/list'>Списком</a>
+    {{/if}}
+    |
+    {{if mode == 'thumbnails'}}
+    Превьюшками
+    {{else}}
+    <a id='thumbnails' href='/thumbnails'>Превьюшками</a>
+    {{/if}}
+    ]
+    Выбрать: [ <a id='select_all' href='/all'>Все</a>
+    | <a id='select_none' href='/none'>Ни одно</a> ]
+    Действие
+    {{if type != 'trash'}}
+    [ <a id='image_links' href='/links'>Ссылки</a>
+    | <a id='image_change' href='/change'>Изменить</a>
+    | <a id='image_delete' href='/delete'>Удалить</a> ]
+    {{else}}
+    [ <a id='image_restore' href='/restore'>Восстановить</a>
+    | <a id='trash_empty' href='/empty' title='Выкинуть мусор'>Очистить</a> ]
+    {{/if}}
+</script>
+
+<!--Image list template-->
+<script type="text/template" id="image_list_template">
+    <div class='list_row' id='${id}'>
+        <div class='cell_left'><input type='checkbox' id='image_mark' title='Выбрать'/></div>
+        <div class='cell_left' id='name'><a href='${url}' target='_blank'
+                                            title='${name} \n\r ${title} \n\r Размеры: ${width} x ${height} x ${size_text} \n\r Показано: ${counter} раз(а) \n\r Дата последнего показа: ${date_showed_text}'>${name}</a>
+        </div>
+        <div class='cell_left' id='counter' title='Показано раз'>(${counter})</div>
+        <div class='cell_left' id='description' title='${description}'>${description}</div>
+        <div class='cell_right'>
+            {{if type != 'trash'}}
+            [<a class='image_links' href='/links' title='Ссылки'>Слк</a>|<a class='image_change' href='/change'
+                                                                            title='Изменить'>Изм</a>|<a
+                class='image_edit' href='/edit' title='Редактировать'>Ред</a>|<a class='image_delete' href='/delete'
+                                                                                 title='Удалить'>Удл</a>]
+            {{else}}
+            [ <a class='image_restore' href='/restore' title='Восстановить'>Восстановить</a> ]
+            {{/if}}
+        </div>
+        <div class='cell_right'>${date_created_text}</div>
+        <div class='cell_right'>${size_text}</div>
+    </div>
+</script>
+
+<!--Image thumbnail template-->
+<script type="text/template" id="image_thumbnail_template">
+    <div class='thumbnail' id='${id}'>
+        <div class='thumbnail_toolbar'>
+            <input type='checkbox' id='image_mark' title='Выбрать'/>
+            {{if type != 'trash'}}
+            [<a class='image_links' href='/links' title='Ссылки'>Слк</a>
+            |<a class='image_change' href='/change' title='Изменить'>Изм</a>
+            |<a class='image_delete' href='/delete' title='Удалить'>Удл</a>]
+            {{else}}
+            [ <a class='image_restore' href='/restore' title='Восстановить'>Восстановить</a> ]
+            {{/if}}
+        </div>
+        <a href='${url}'
+           title='${name} \n\r ${title} \n\r Размеры: ${width} x ${height} x ${size_text} \n\r Показано: ${counter} раз(а) \n\r Дата последнего показа: ${date_showed_text}'
+           target='_blank'>
+            <img src='${url_thumbnail}' alt='${title}'/>
+        </a>
+    </div>
+</script>
+
+<!-- Window entry template-->
+<script type="text/template" id="window_entry_template">
+    <div class="title">Вход</div>
+    <div class="field">
+        <label for="email">Почта</label>
+        <input type="email" class="email" id="email" placeholder="vasily.pupkin@gmail.com"/>
+    </div>
+    <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" class="password" id="password"/>
+    </div>
+    <div class="button">
+        [ <a id="entry_entry" href="entry" title="Сим Сим Откройся">Войти</a>
+        | <a id="entry_registration" href="registration" title="Да, я хочу тут зарегистрироваться">Регистрация</a>
+        | <a id="entry_remind" href="remind" title="Вспомнить все">Вспомнить</a>
+        | <a id="entry_cancel" href="cancel" title="Передумал входить">Отмена</a> ]
+    </div>
+</script>
+
+<!-- Window registration template-->
+<script type="text/template" id="window_registration_template">
+    <div class="title">Регистрация</div>
+    <div class="field">
+        <label for="name">Имя</label>
+        <input type="text" class="name" id="name" placeholder="Вася Пупкин"/>
+    </div>
+    <div class="field">
+        <label for="email">Почта</label>
+        <input type="email" class="email" id="email"
+               placeholder="vasily.pupkin@gmail.com"/>
+    </div>
+    <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" class="password" id="password"/>
+    </div>
+    <div class="button">
+        [ <a id="registration_registrate" href="registrate">Зарегистриоваться</a> | <a id="registration_cancel"
+                                                                                       href="cancel">Отмена</a> ]
+    </div>
+</script>
+
+<!-- Window profile template-->
+<script type="text/template" id="window_profile_template">
+    <div class="title">
+        Личное дело №<span id="id"></span>
+    </div>
+    <div class="field">
+        <label for="name">Имя</label>
+        <input type="text" class="name" id="name"/>
+    </div>
+    <div class="field">
+        <label for="email">Почта</label>
+        <input type="email" class="email" id="email"/>
+    </div>
+    <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" class="password" id="password"/>
+    </div>
+    <div class="field">
+        <label for="thumbnail_dimension">Превью</label>
+        <input type="number" class="thumbnail_dimension"
+               id="thumbnail_dimension"
+               min="${r_conf.thumbnail_dimension_min}"
+               max="${r_conf.thumbnail_dimension_max}"
+               step="10"/>
+        px (от ${r_conf.thumbnail_dimension_min}
+        до ${r_conf.thumbnail_dimension_max} пикселей)
+    </div>
+    <div class="checkbox">
+        <label for="thumbnail_size">Размеры в превью</label>
+        <input type="checkbox" id="thumbnail_size"
+               title="Значение по умолчанию при закачке изображения">
+    </div>
+    <div class="checkbox">
+        <label for="convert">Сохранять в JPG</label>
+        <input type="checkbox" id="convert"
+               title="Значение по умолчанию при закачке изображения">
+    </div>
+    <div class="image">
+        <label>Связать с</label>
+        <a id="vk_link" href="vk_link"><img src="img/vk.gif" alt="VK"/> </a>
+    </div>
+    <div class="button">
+        [ <a id="profile_save" href="save">Сохранить</a> | <a id="profile_cancel" href="cancel">Отменить</a> ]
+    </div>
+</script>
+
+<!-- Window image upload template-->
+<script type="text/template" id="window_image_upload_template">
+
+    <div class="file">
+        <input type="text" id="image_upload_files" placeholder="Выберите изображения" readonly/>
+        <input type="button"
+               id="image_upload_browse"
+               value="Выбрать"/>
+        <input type="button" id="image_upload_start" value="Закачать"
+               title="Максимум ${r_conf.max_file_size} мегабайт"/>
+    </div>
+    <div id="image_upload_add_on">
+        <div class="field">
+            <label for="album">Альбом</label>
+            <select class="album" id="album" name="album"></select>
+        </div>
+        <div class="field">
+            <label for="name">Имя альбома</label>
+            <input type="text" class="name" id="name" name="name"
+                   title="Имя нового альбома" placeholder="Мой новый альбом">
+        </div>
+        <div class="field">
+            <label for="thumbnail_dimension">Превью</label>
+            <input type="number" class="thumbnail_dimension"
+                   id="thumbnail_dimension" name="thumbnail_dimension"
+                   min="${r_conf.thumbnail_dimension_min}"
+                   max="${r_conf.thumbnail_dimension_max}"
+                   step="10" value=""/> пикселей (от
+            ${r_conf.thumbnail_dimension_min}
+            до
+            ${r_conf.thumbnail_dimension_max}
+            пикселей)
+        </div>
+        <div class="field">
+            <label for="thumbnail_text">Надпись в превью</label>
+            <input class="thumbnail_text" id="thumbnail_text"
+                   name="thumbnail_text" maxlength="20"
+                   placeholder="Увеличить"/>
+        </div>
+        <div class="checkbox">
+            <label for="thumbnail_size">Размеры в превью</label>
+            <input type="checkbox" class="thumbnail_size"
+                   id="thumbnail_size" name="thumbnail_size"/>
+        </div>
+        <div class="field">
+            <label for="rotate">Повернуть</label><select class="rotate" id="rotate" name="rotate">
+            <option value="">не поворачивать</option>
+            <option value="left">налево</option>
+            <option value="right">направо</option>
+            <option value="footup">вверх ногами</option>
+        </select>
+        </div>
+        <div class="field">
+            <label for="resize">Обрезать до</label><select class="resize" id="resize" name="resize">
+            <option value="" selected>не обрезать</option>
+            <option value="320">320</option>
+            <option value="640">640</option>
+            <option value="800">800</option>
+            <option value="1024">1024</option>
+            <option value="1280">1280</option>
+            <option value="1600">1600</option>
+        </select> пикселей
+        </div>
+        <div class="field">
+            <label for="description">Описание</label>
+            <textarea class="description" id="description" name="description" placeholder="Это Я"></textarea>
+        </div>
+        <div class="button" id="image_upload_toolbar_big">
+            [ <a id="image_upload_cancel" href="cancel">Отменить</a> ]
+        </div>
+    </div>
+    <div id="image_upload_add_off">
+        <div class="button" id="image_upload_toolbar_small">
+            <a id="image_upload_add" href="addition">Дополнительно</a>
+        </div>
+        <div class="button" id="image_upload_toolbar_big">
+            [ <a id="image_upload_add" href="addition">Дополнительно</a>
+            | <a id="image_upload_cancel" href="cancel">Отменить</a> ]
+        </div>
+    </div>
+</script>
+
+<!--Window image change template-->
+<script type="text/template" id="window_image_change_template">
+    <div class="field">
+        <label for="album">Альбом</label><select class="album" id="album"></select>
+    </div>
+    <div class="field">
+        <label for="thumbnail_dimension">Превью</label>
+        <input type="number" class="thumbnail_dimension"
+               id="thumbnail_dimension"
+               min="${r_conf.thumbnail_dimension_min}"
+               max="${r_conf.thumbnail_dimension_max}"
+               step="10"/>пикселей (от
+        ${r_conf.thumbnail_dimension_min}
+        до
+        ${r_conf.thumbnail_dimension_max}
+        пикселей)
+    </div>
+    <div class="field">
+        <label for="thumbnail_text">Надпись в превью</label>
+        <input class="thumbnail_text" id="thumbnail_text"
+               maxlength="20" placeholder="Увеличить"/>
+    </div>
+    <div class="checkbox">
+        <label for="thumbnail_size">Размеры в превью</label>
+        <input type="checkbox" class="thumbnail_size"
+               id="thumbnail_size"/>
+    </div>
+    <div class="field">
+        <label for="rotate">Повернуть</label>
+        <select class="rotate" id="rotate">
+            <option value="">не поворачивать</option>
+            <option value="left">налево</option>
+            <option value="right">направо</option>
+            <option value="footup">вверх ногами</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="resize">Обрезать до</label>
+        <select class="resize" id="resize">
+            <option value="" selected>не обрезать</option>
+            <option value="320">320</option>
+            <option value="640">640</option>
+            <option value="800">800</option>
+            <option value="1024">1024</option>
+            <option value="1280">1280</option>
+            <option value="1600">1600</option>
+        </select> пикселей
+    </div>
+    <div class="textarea">
+        <label for="description">Описание</label>
+        <textarea class="description" id="description" placeholder="Это Я"></textarea>
+    </div>
+    <div class="button">
+        [ <a id="image_change_save" href="save">Сохранить</a> | <a id="image_change_cancel" href="cancel">Отменить</a>
+        ]
+    </div>
+</script>
+
+<!-- Window album create template-->
+<script type="text/template" id="window_album_create_template">
+    <div class="field">
+        <label for="name">Имя</label>
+        <input type="text" class="name" id="album_create_name" placeholder="Мой альбом"/>
+    </div>
+    <div class="textarea">
+        <label for="description">Описание</label>
+        <textarea class="description" id="album_create_description" placeholder="Как я провел новый год"></textarea>
+    </div>
+    <div class="button">
+        [ <a id="album_create_save" href="save">Создать</a>
+        | <a id="album_create_cancel" href="cancel">Отменить</a> ]
+    </div>
+</script>
+
+<!-- Window album change template-->
+<script type="text/template" id="window_album_change_template">
+    <div class="field">
+        <label for="name">Имя</label>
+        <input type="text" class="name" id="name" placeholder="Мой альбом"/>
+    </div>
+    <div class="textarea">
+        <label for="description">Описание</label>
+        <textarea class="description" id="description" placeholder="Как я провел новый год"></textarea>
+    </div>
+    <div class="button">
+        [ <a id="album_change_save" href="save">Сохранить</a>
+        | <a id="album_change_cancel" href="cancel">Отменить</a> ]
+    </div>
+</script>
+
+<!-- Window links template-->
+<script type="text/template" id="window_links_template">
+    <div class="field">
+        <label for="links_url">Для просмотра</label>
+        <input type="text" id="links_url" readonly/>
+    </div>
+    <div class="field">
+        <label for="links_bbcode">Для форума</label>
+        <input type="text" id="links_bbcode" readonly/>
+    </div>
+    <div class="field">
+        <label for="links_html">HTML</label>
+        <input type="text" id="links_html" readonly/>
+    </div>
+    <div class="textarea">
+        <label for="links_url">Для просмотра</label>
+        <textarea id="links_url" readonly></textarea>
+    </div>
+    <div class="textarea">
+        <label for="links_bbcode">Для форума</label>
+        <textarea id="links_bbcode" readonly></textarea>
+    </div>
+    <div class="textarea">
+        <label for="links_html">HTML</label>
+        <textarea id="links_html" readonly></textarea>
+    </div>
+    <div class="button">
+        [ <a id="links_close" href="close">Закрыть</a> ]
+    </div>
+</script>
+
+<!-- Window rules template-->
+<script type="text/template" id="window_rules_template">
+    <div id="rules_left">
+        <b>Бесплатно</b>
+        <ul>
+            <li>Любые изображения</li>
+            <li>размером до ${r_conf.max_file_size} мегабайт</li>
+            <li>размещаются в альбомах</li>
+            <li>хранятся 1 год</li>
+            <li>ссылка только на превью</li>
+        </ul>
+    </div>
+    <div id="rules_right">
+        <b>Платно</b>
+        <ul>
+            <li>Любые изображения</li>
+            <li>размером до 100 мегабайт</li>
+            <li>размещаются в альбомах</li>
+            <li>хранятся неограниченный срок</li>
+            <li>ссылка на полное изображение</li>
+            <li>без рекламы</li>
+            <li>погигабайтная тарификация</li>
+            <li>1 руб. за 1 гигабайт в день</li>
+        </ul>
+    </div>
+    <div>Напиши что-нибудь на <a href="mailto:${r_conf.email}">почту</a></div>
+    <div class="button">
+        [ <a id="rules_close" href="close">Я все понял</a> ]
+    </div>
+</script>
+
+<!-- Google Analitics -->
+<script>
+    (function (i, s, o, g, r, a, m) {
+        i['GoogleAnalyticsObject'] = r;
+        i[r] = i[r] || function () {
+            (i[r].q = i[r].q || []).push(arguments)
+        }, i[r].l = 1 * new Date();
+        a = s.createElement(o),
+                m = s.getElementsByTagName(o)[0];
+        a.async = 1;
+        a.src = g;
+        m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-42106506-1', 'pikucha.ru');
+    ga('send', 'pageview');
+
+</script>
+<!-- Yandex.Metrika counter --><script type="text/javascript">(function (d, w, c) { (w[c] = w[c] || []).push(function() { try { w.yaCounter77787 = new Ya.Metrika({id:77787, clickmap:true, trackLinks:true}); } catch(e) { } }); var n = d.getElementsByTagName("script")[0], s = d.createElement("script"), f = function () { n.parentNode.insertBefore(s, n); }; s.type = "text/javascript"; s.async = true; s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js"; if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); } })(document, window, "yandex_metrika_callbacks");</script><noscript><div><img src="//mc.yandex.ru/watch/77787" style="position:absolute; left:-9999px;" alt="" /></div></noscript><!-- /Yandex.Metrika counter -->
+</div>
+<script src="//mc.yandex.ru/metrika/watch.js" type="text/javascript" defer="defer"></script>
+<noscript>
+    <div><img src="//mc.yandex.ru/watch/77787" style="position:absolute; left:-9999px;" alt=""/></div>
+</noscript>
+
+</head>
+<body>
+</body>
+</html>

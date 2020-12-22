@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Хранилище изображений</title>
+<link rel="stylesheet" href="css/styles.css"/>
+<link rel="shortcut icon" href="favicon.ico"/>
+<script src="http://yandex.st/jquery/1.10.1/jquery.js"></script>
+<script src="http://yandex.st/jquery/tmpl/1.0.0pre/jquery.tmpl.min.js"></script>
+<script src="http://yandex.st/jquery/cookie/1.0/jquery.cookie.min.js"></script>
+<script src="http://yandex.st/json2/2011-10-19/json2.min.js"></script>
+<script src="http://yandex.st/share/share.js"></script>
+<script src="http://api-maps.yandex.ru/2.0-stable/?load=package.standard&lang=ru-RU"></script>
+<script src="http://vk.com/js/api/openapi.js"></script>
+<script src="js/purl.min.js"></script>
+<!--<script async src="http://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>-->
+<script>
+
+var vk_app_id = 3532196;
+var type;
+var id;
+var mode;
+var index = 0;
+var padding = 50;
+var referrer = encodeURIComponent(document.referrer);
+var r_user;
+var r_album;
+var t_images = [];
+
+$(document).ready(function () {
+
+    id = $.url().segment(1);
+
+    if (id[0] == "i" || ( id[0] >= 1 && id[0] <= 9)) {
+        type = "image";
+        mode = "image";
+    } else if (id[0] == "a") {
+        type = "album";
+        mode = "thumbnails";
+    } else {
+        window.location = "/";
+        return;
+    }
+
+    $("#body_template").tmpl().prependTo("body");
+
+//    (adsbygoogle = window.adsbygoogle || []).push({});
+
+    VK.init({apiId: vk_app_id, onlyWidgets: true});
+
+    get_data();
+
+    menu_show();
+
+    display_show();
+
+});
+
+function get_data() {
+
+    $.ajax({
+        async: false,
+        type: "POST",
+        url: "/api?object=" + type + "&action=get",
+        data: {
+            id: id,
+            user: true,
+            album: true,
+            images: true
+        },
+        dataType: "json",
+        success: function (i_data) {
+
+            if ("error" in i_data) {
+                alert(i_data.text);
+                location.href = "/";
+            }
+
+            if ("user" in i_data)
+                r_user = i_data.user;
+
+            if ("album" in i_data)
+                r_album = i_data.album;
+
+            if ("image" in i_data)
+                t_images.push(i_data.image);
+
+            if ("images" in i_data) {
+
+                for (var l_image in i_data.images) {
+
+                    if (i_data.images.hasOwnProperty(l_image)) {
+
+                        var lr_image = i_data.images[l_image];
+
+                        t_images.push(lr_image);
+
+                    }
+
+                }
+
+            }
+
+        },
+        error: function () {
+            alert("Error on get content");
+        }
+
+    });
+
+}
+
+function menu_show() {
+
+    var l_menu = $("#menu");
+
+    l_menu.empty();
+
+    $("#menu_template").tmpl().appendTo(l_menu);
+
+    l_menu.show();
+
+}
+
+function display_show() {
+
+    if (type == "image")
+        document.title = t_images[0].title;
+    else if (type == "album")
+        document.title = r_album.name;
+
+    display_update();
+
+    $("#window_content").show();
+
+}
+
+function display_hide() {
+    $("#window_content").hide();
+}
+
+function display_update() {
+
+    var l_window_content = $("#window_content");
+
+    l_window_content.empty();
+
+    if (type == "album") {
+
+        $("#album_template").tmpl(r_album).appendTo(l_window_content);
+        ya_share(r_album);
+
+
+        $("#images").click(function () {
+            mode = "images";
+            display_update();
+            return false;
+        });
+
+        $("#thumbnails").click(function () {
+            mode = "thumbnails";
+            display_update();
+            return false;
+        });
+
+        $("#album_comments").click(function () {
+            comments_show(r_album);
+            return false;
+        });
+
+        $("#album_links").click(function () {
+            links_show(r_album);
+            return false;
+        });
+
+        $("#album_qrcode_link").click(function () {
+            qrcode_show(r_album);
+            return false;
+        });
+
+    }
+
+    $(l_window_content).append("<div id='content_images'></div>");
+
+    if (mode == "thumbnails") {
+
+        for (var l_index in t_images) {
+            if (t_images.hasOwnProperty(l_index)) {
+
+                var lr_image = t_images[l_index];
+
+                $("#thumbnail_template").tmpl(lr_image).appendTo("#content_images");
+
+            }
+        }
+
+        $(".show").click(function () {
+            var l_id = $(this).attr("id");
+            mode = "image";
+            index = get_index(l_id);
+            display_update();
+            return false;
+        });
+
+    }
+
+    if (mode == "images") {
+
+        for (l_index in t_images) {
+
+            if (t_images.hasOwnProperty(l_index)) {
+
+                lr_image = t_images[l_index];
+
+                $("#image_template").tmpl(lr_image).appendTo("#content_images");
+
+                ya_share(lr_image);
+                optimize(lr_image);
+
+            }
+
+        }
+
+        $(".image_comments").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            comments_show(lr_image);
+            return false;
+        });
+
+        $(".image_links").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            links_show(lr_image);
+            return false;
+        });
+
+        $(".qrcode_link").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            qrcode_show(lr_image);
+            return false;
+        });
+
+        $(".map_link").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            map_show(lr_image);
+            return false;
+        });
+
+        $(".image_zoom").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            zoom(lr_image);
+            return false;
+        });
+
+        $(window).resize(function () {
+            resize();
+        });
+
+    }
+
+    if (mode == "image") {
+
+        lr_image = t_images[index];
+
+        $("#image_template").tmpl(lr_image).appendTo("#content_images");
+
+        ya_share(lr_image);
+
+        optimize(lr_image);
+
+        if (type == "album") {
+
+            var lr_navi = {};
+            lr_navi.prev = index > 0;
+            lr_navi.next = index < t_images.length - 1;
+
+            $("#navigation_template").tmpl(lr_navi).appendTo("#content_images");
+
+        }
+
+        $(".image_comments").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            comments_show(lr_image);
+            return false;
+        });
+
+        $(".image_links").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            links_show(lr_image);
+            return false;
+        });
+
+        $(".qrcode_link").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            qrcode_show(lr_image);
+            return false;
+        });
+
+        $(".map_link").click(function () {
+            var l_id = $(this).parent().parent().attr("id");
+            var lr_image = get_image(l_id);
+            map_show(lr_image);
+            return false;
+        });
+
+        $(".image_zoom").click(function () {
+            var lr_image = t_images[index];
+            zoom(lr_image);
+            return false;
+        });
+
+        $("#album_return").click(function () {
+            mode = "thumbnails";
+            display_update();
+            return false;
+        });
+
+        $("#image_prev").click(function () {
+            index--;
+            display_update();
+            return false;
+        });
+
+        $("#image_next").click(function () {
+            index++;
+            display_update();
+            return false;
+        });
+
+        $(window).resize(function () {
+            var lr_image = t_images[index];
+            optimize(lr_image);
+        });
+
+    }
+
+}
+
+function ya_share(ir_object) {
+
+    var l_title = ir_object.name;
+
+    if ("title" in ir_object)
+        l_title = ir_object.title;
+
+    var l_description = ir_object.description;
+
+    new Ya.share({
+        element: 'share_' + ir_object.id,
+        elementStyle: {
+            'type': 'link',
+            'linkUnderline': true,
+            'linkIcon': false,
+            'text': 'Поделиться',
+            'border': false,
+            'quickServices': ['']
+        },
+        link: ir_object.url,
+        title: l_title,
+        description: l_description,
+        image: ir_object.url_thumbnail,
+        onready: function (instance) {
+
+            var l_ys = $(".ya_share_album *");
+
+            l_ys.css("margin", "0px");
+            l_ys.css("padding", "0px");
+            l_ys.css("height", "auto");
+
+            l_ys = $(".ya_share_image *");
+
+            l_ys.css("margin", "0px");
+            l_ys.css("padding", "0px");
+            l_ys.css("height", "auto");
+
+        }
+
+    });
+
+}
+
+function comments_show(ir_object) {
+
+    var lr_window = $("#window_comments");
+
+    lr_window.empty();
+
+    $("#window_comments_template").tmpl().appendTo(lr_window);
+
+    var l_top = $("body").scrollTop();
+    lr_window.css("margin-top", l_top - 300 + "px");
+
+    VK.Widgets.Comments("vk_comments", {limit: 5, width: "520", attach: "*", pageUrl: ir_object.url}, ir_object.code);
+
+    lr_window.show();
+
+    $("#window_comments #comments_close").click(function () {
+        $("#window_comments").hide();
+        return false;
+    });
+
+}
+
+function links_show(ir_object) {
+
+    $("#window_links").empty();
+
+    $("#window_links_template").tmpl().appendTo("#window_links");
+
+    var l_top = $("body").scrollTop();
+    $("#window_links").css("margin-top", l_top - 150 + "px");
+
+    $("#window_links #url").val(ir_object.url);
+    $("#window_links #bbcode").val(ir_object.bbcode);
+
+    $("#window_links").show();
+
+    $("#window_links #url").click(function () {
+        $(this).select();
+    });
+
+    $("#window_links #bbcode").click(function () {
+        $(this).select();
+    });
+
+    $("#window_links").find("#links_close").click(function () {
+        $("#window_links").hide();
+        return false;
+    });
+
+}
+
+function qrcode_show(ir_object) {
+
+    $("#window_qrcode").empty();
+
+    $("#window_qrcode_template").tmpl().appendTo("#window_qrcode");
+
+    var l_top = $("body").scrollTop();
+    $("#window_qrcode").css("margin-top", l_top - 200 + "px");
+
+    var l_url = "http://chart.apis.google.com/chart?cht=qr&chs=300x300&chl=" + ir_object.url;
+
+    $("#window_qrcode #qrcode").attr("src", l_url);
+
+    $("#window_qrcode").show();
+
+    $("#window_qrcode #qrcode_close").click(function () {
+        $("#window_qrcode").hide();
+        return false;
+    });
+
+}
+
+function map_show(ir_image) {
+
+    $("#window_map").empty();
+
+    $("#window_map_template").tmpl().appendTo("#window_map");
+
+    var l_top = $("body").scrollTop();
+    $("#window_map").css("margin-top", l_top - 200 + "px");
+
+    $("#window_map").show();
+
+    var lr_map = new ymaps.Map("map", {
+        center: [ir_image.latitude, ir_image.longitude],
+        zoom: 12
+    });
+
+    var lr_mark = new ymaps.Placemark([ir_image.latitude, ir_image.longitude], {
+        iconContent: "Тут"
+    }, {
+        // Опции
+        preset: 'twirl#blueStretchyIcon' // иконка растягивается под контент
+    });
+
+    // Добавляем метку на карту
+    lr_map.geoObjects.add(lr_mark);
+
+    $("#window_map #map_close").click(function () {
+        $("#window_map").hide();
+        return false;
+    });
+
+}
+
+function zoom(ir_image) {
+
+    var lr_image = $("#" + ir_image.id + " #image");
+
+    if (lr_image.width() == ir_image.width)
+        optimize(ir_image);
+    else
+        maximize(ir_image);
+
+}
+
+function optimize(ir_image) {
+
+    var lr_link = $("#" + ir_image.id + " .image_zoom");
+    var lr_image = $("#" + ir_image.id + " #image");
+
+    var l_max_width = $(window).width() - padding;
+    var l_image_width = lr_image.width();
+
+    if (l_image_width != l_max_width) {
+
+        if (ir_image.width > l_max_width) {
+            var l_ratio = l_max_width / ir_image.width;
+            lr_image.width(ir_image.width * l_ratio);
+            lr_image.height(ir_image.height * l_ratio);
+            lr_link.attr("href", "/zoom");
+        } else {
+            maximize(ir_image);
+            lr_link.removeAttr("href");
+        }
+
+    }
+
+}
+
+function maximize(ir_image) {
+    var lr_image = $("#" + ir_image.id + " #image");
+    lr_image.width(ir_image.width);
+    lr_image.height(ir_image.height);
+}
+
+function get_index(id) {
+
+    for (var l_index in t_images) {
+
+        if (t_images.hasOwnProperty(l_index)) {
+
+            var lr_image = t_images[l_index];
+
+            if (lr_image.id == id)
+                return l_index;
+
+        }
+
+    }
+
+}
+
+function get_image(id) {
+
+    var l_index = get_index(id);
+
+    return t_images[l_index];
+
+}
+
+function resize() {
+
+    for (var l_index in t_images) {
+
+        if (t_images.hasOwnProperty(l_index)) {
+
+            var lr_image = t_images[l_index];
+            optimize(lr_image);
+
+        }
+
+    }
+
+}
+
+</script>
+
+<!--Body template-->
+<script type="text/template" id="body_template">
+    <div id="menu"></div>
+    <div id="adv">
+        <!--&lt;!&ndash; Google AdSence &ndash;&gt;-->
+        <!--<ins class="adsbygoogle"-->
+        <!--style="display:inline-block;width:728px;height:90px"-->
+        <!--data-ad-client="ca-pub-6882504135240219"-->
+        <!--data-ad-slot="8366241260"></ins>-->
+        <!--<a href="http://youtu.be/2yg1rXMSjFk" target="_blank">Евромайдан в России уже через 2 месяца!</a>-->
+        <a href="https://www.youtube.com/watch?v=K8q3Iz9STLU" target="_blank">Пятая колонна - предатели среди нас!</a>
+    </div>
+    <div id="window_content"></div>
+    <div id="window_links"></div>
+    <div id="window_qrcode"></div>
+    <div id="window_map"></div>
+    <div id="window_comments"></div>
+</script>
+
+<!--Menu template-->
+<script type="text/template" id="menu_template">
+    <div class="menu_item_left">
+        <a href="/">Закачать</a>
+    </div>
+</script>
+
+<!--Album template-->
+<script type="text/template" id="album_template">
+    <div id='album_content'>
+        <div id='album_title'>${name}</div>
+        <div id='album_toolbar'>
+            [
+            {{if mode == "thumbnails"}}
+            Превьюшками
+            {{else}}
+            <a id='thumbnails' href='/thumbnails'>Превьюшками</a>
+            {{/if}}
+            |
+            {{if mode == "images"}}
+            Списком
+            {{else}}
+            <a id='images' href='/images'>Списком</a>
+            {{/if}}
+            |
+            <a id="album_comments" href='comments' title='Комментировать'>Комментировать</a>
+            |
+            <a id='album_links' href='/links'>Ссылки</a>
+            |
+            <div class='ya_share_album' id='share_${id}'></div>
+            |
+            <a id='album_qrcode_link' href='/qrcode'><img class='qrcode_image' src='img/icon-qrcode.png' width='16px'
+                                                          height='16px'></a>
+            ]
+        </div>
+        <div id='album_description'>${description}</div>
+    </div>
+</script>
+
+<!--Image template-->
+<script type="text/template" id="image_template">
+    <div class='image_content' id='${id}'>
+        <div class='image_title'>${title}</div>
+        <div class='image_toolbar'>
+            [
+            {{if type == "image" && r_album != null}} <a href='${r_album.url}' title='${r_album.name}'>
+            Из альбома</a> |
+            {{/if}}
+            <a class='image_comments' href='comments' title='Комментировать'>Комментировать</a>
+            |
+            <a class='image_links' href='/links'>Ссылки</a>
+            |
+            <div class='ya_share_image' id='share_${id}'></div>
+            |
+            <a class='qrcode_link' href='/qrcode'><img class='qrcode_image' src='img/icon-qrcode.png' width='16px'
+                                                       height='16px'></a>
+            {{if latitude != 0}}|
+            <a class='map_link' href='/map'><img class='map_image' src='img/icon-map.png' width='16px'
+                                                 height='16px'></a>
+            {{/if}}
+            ]
+        </div>
+        <div>
+            <a class='image_zoom' href='/zoom'>
+                <img id='image' class='image' src='${url_direct}?referrer=${referrer}' width='${width}'
+                     height='${height}' alt='${name}' title="${title_ext}">
+            </a>
+        </div>
+    </div>
+</script>
+
+<!-- Thumbnail template-->
+<script type="text/template" id="thumbnail_template">
+    <a class='show' id='${id}' href='${code}'><img class='thumbnail' src='${url_thumbnail}' title='${title}'
+                                                   alt='${name}'/></a>
+</script>
+
+<!--Album navigation template-->
+<script type="text/template" id="navigation_template">
+    <div id='content_navigation'>
+        &larr; {{if prev}}<a id='image_prev' href='/prev'>Предыдущая</a>{{else}}Предыдущая{{/if}}
+        | <a id='album_return' href='/return'>В альбом</a>
+        | {{if next}}<a id='image_next' href='/next'>Следующая</a>{{else}}Следующая{{/if}} &rarr;
+    </div>
+</script>
+
+<!--Window comments template-->
+<script type="text/template" id="window_comments_template">
+    <div id="vk_comments"></div>
+    <div class="button">[ <a id="comments_close" href="/close">Закрыть</a> ]</div>
+</script>
+
+<!--Window links template-->
+<script type="text/template" id="window_links_template">
+    <div class="field">
+        <label for="url">Для просмотра</label>
+        <input type="text" class="name" id="url" readonly/>
+    </div>
+    <div class="field">
+        <label for="bbcode">Для форума</label>
+        <input type="text" class="name" id="bbcode" readonly/>
+    </div>
+    <div class="button">
+        [ <a id="links_close" href="/close">Закрыть</a> ]
+    </div>
+</script>
+
+<!--Window qrcode template-->
+<script type="text/template" id="window_qrcode_template">
+    <div><img id="qrcode"></div>
+    <div class="button">[ <a id="qrcode_close" href="/close">Закрыть</a> ]</div>
+</script>
+
+<!--Window map template-->
+<script type="text/template" id="window_map_template">
+    <div id="map"></div>
+    <div class="button">[ <a id="map_close" href="/close">Закрыть</a> ]</div>
+</script>
+
+<!-- Google Analitics -->
+<script>
+    (function (i, s, o, g, r, a, m) {
+        i['GoogleAnalyticsObject'] = r;
+        i[r] = i[r] || function () {
+            (i[r].q = i[r].q || []).push(arguments)
+        }, i[r].l = 1 * new Date();
+        a = s.createElement(o),
+                m = s.getElementsByTagName(o)[0];
+        a.async = 1;
+        a.src = g;
+        m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-42106506-1', 'pikucha.ru');
+    ga('send', 'pageview');
+
+</script>
+<!-- Yandex.Metrika counter --><script type="text/javascript">(function (d, w, c) { (w[c] = w[c] || []).push(function() { try { w.yaCounter77787 = new Ya.Metrika({id:77787, clickmap:true, trackLinks:true}); } catch(e) { } }); var n = d.getElementsByTagName("script")[0], s = d.createElement("script"), f = function () { n.parentNode.insertBefore(s, n); }; s.type = "text/javascript"; s.async = true; s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js"; if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); } })(document, window, "yandex_metrika_callbacks");</script><noscript><div><img src="//mc.yandex.ru/watch/77787" style="position:absolute; left:-9999px;" alt="" /></div></noscript><!-- /Yandex.Metrika counter -->
+</head>
+<body>
+</body>
+</html>

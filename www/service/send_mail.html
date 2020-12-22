@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Рассылка сообщений</title>
+    <script src="http://yandex.st/jquery/2.0.2/jquery.min.js"></script>
+    <script src="http://yandex.st/jquery/tmpl/1.0.0pre/jquery.tmpl.min.js"></script>
+    <script src="http://yandex.st/jquery/cookie/1.0/jquery.cookie.min.js"></script>
+    <script>
+        $(document).ready(function () {
+
+            $("#send").click(function () {
+
+                $.ajax({
+                    async: false,
+                    type: "POST",
+                    url: "/api?object=service&action=send_mail",
+                    data: {
+                        token: $.cookie("SID"),
+                        subject: $("#subject").val(),
+                        message: $("#message").val()
+                    },
+                    dataType: "json",
+                    success: function (i_data) {
+
+                        if ("error" in i_data) {
+                            alert(i_data.text);
+                        } else {
+                            alert("OK");
+                        }
+
+                    },
+                    error: function (XMLHttpRequest, textStatus, errorThrown) {
+                        alert("Error on get data: " + textStatus);
+                    }
+                });
+
+                return false;
+            });
+
+        });
+    </script>
+</head>
+<body>
+<form>
+    <label for="subject">Subject</label><input id="subject"/><br/> <label for="message">Message</label>
+    <textarea id="message"></textarea>
+    <br/>
+    <button type="button" id="send">Send</button>
+</form>
+</body>
+</html>
+
+

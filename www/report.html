@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Отчет</title>
+    <link rel="stylesheet" href="/css/styles.css"/>
+    <script src="http://yandex.st/jquery/2.0.2/jquery.min.js"></script>
+    <script src="http://yandex.st/jquery/tmpl/1.0.0pre/jquery.tmpl.min.js"></script>
+    <script src="http://yandex.st/jquery/cookie/1.0/jquery.cookie.min.js"></script>
+    <script src="http://yandex.st/json2/2011-10-19/json2.min.js"></script>
+    <script src="js/purl.min.js"></script>
+    <script>
+
+        var token = "";
+
+        var page = $.url().param("page");
+        if (!page)
+            page = 1;
+
+        var rows = $.url().param("rows");
+        if (!rows)
+            rows = 1000;
+
+        $(document).ready(function () {
+
+            try {
+
+                init();
+                refresh();
+
+            } catch (e) {
+                alert(e);
+            }
+
+        });
+
+        function init() {
+
+            token = localStorage.token;
+
+        }
+
+        function refresh() {
+
+                $.ajax({
+                    async: false,
+                    type: "GET",
+                    url: "/api?object=report&action=get_images",
+                    data: {
+                        page: page,
+                        rows: rows,
+                        token: token
+                    },
+                    dataType: "json",
+                    success: function (i_data) {
+
+                        if ("error" in i_data)
+                            throw(i_data.text);
+
+                        $("#content").empty();
+
+                        $("#image_template").tmpl(i_data).appendTo("#content");
+
+                        navi();
+
+                    },
+                    error: function (XMLHttpRequest, textStatus, errorThrown) {
+
+                        alert(errorThrown);
+                        location.href = "/";
+
+                    }
+                });
+        }
+
+        function navi() {
+
+            $("#navi").html($("#navi_template").tmpl());
+
+            $("#navi_prev").click(function () {
+                page--;
+                refresh();
+                return false;
+            });
+
+            $("#navi_next").click(function () {
+                page++;
+                refresh();
+                return false;
+            });
+
+        }
+
+    </script>
+    <!-- Templates -->
+    <script type="text/template" id="image_template">
+        <a href="${url}"><img src="${url_thumbnail}"/></a>
+    </script>
+    <script type="text/template" id="navi_template">
+        <a id="navi_prev" href="/report?page=${page-1}">Предыдущая</a> | ${page} | <a id="navi_next"
+                                                                                      href="/report?page=${page+1}">Следующая</a>
+    </script>
+</head>
+<body>
+<div id="content"></div>
+<div id="navi"></div>
+</body>
+</html>

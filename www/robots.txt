@@ -1,0 +1,7 @@
+User-agent: *
+Host: pikucha.ru
+Allow: /$
+Allow: /i*
+Allow: /a*
+Disallow: /api
+Sitemap: http://pikucha.ru/sitemap.xml
